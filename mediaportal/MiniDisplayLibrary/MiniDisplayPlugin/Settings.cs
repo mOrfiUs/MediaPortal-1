@@ -325,6 +325,11 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin
       LogInfo("MiniDisplay.Settings.LoadDrivers(): Loading SoundGraph display...");
       list.Add(new SoundGraphDisplay());
 
+      //New sound graph display
+      LogInfo("MiniDisplay.Settings.LoadDrivers(): Loading Sharp Display Manager...");
+      list.Add(new SharpDisplayManager());
+
+
       //Add Debug Form
       LogInfo("MiniDisplay.Settings.LoadDrivers(): Loading Debug Display...");
       list.Add(new DebugForm());
