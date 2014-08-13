@@ -11,16 +11,77 @@ using System.ServiceModel;
 
 namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
 {
-
-    [ServiceContract]
+    [ServiceContract(CallbackContract = typeof(IDisplayServiceCallback))]
     public interface IDisplayService
     {
-        [OperationContract]
+        [OperationContract(IsOneWay = true)]
+        void Connect(string aClientName);
+
+        [OperationContract(IsOneWay = true)]
         void SetText(int aLineIndex, string aText);
 
-        [OperationContract]
+        [OperationContract(IsOneWay = true)]
         void SetTexts(System.Collections.Generic.IList<string> aTexts);
     }
+
+
+    public interface IDisplayServiceCallback
+    {
+        [OperationContract(IsOneWay = true)]
+        void OnConnected();
+
+        [OperationContract]
+        void OnServerClosing();
+    }
+
+
+    public partial class ClientInput : IDisplayServiceCallback
+    {
+        public void OnConnected()
+        {
+            //Debug.Assert(Thread.CurrentThread.IsThreadPoolThread);
+            //Trace.WriteLine("Callback thread = " + Thread.CurrentThread.ManagedThreadId);
+
+            //MessageBox.Show("OnConnected()", "Client");
+        }
+
+
+        public void OnServerClosing()
+        {
+            //Debug.Assert(Thread.CurrentThread.IsThreadPoolThread);
+            //Trace.WriteLine("Callback thread = " + Thread.CurrentThread.ManagedThreadId);
+
+            //MessageBox.Show("OnServerClosing()", "Client");
+        }
+    }
+
+
+
+    public partial class ClientOutput : DuplexClientBase<IDisplayService>, IDisplayService
+    {
+        public ClientOutput(InstanceContext callbackInstance)
+            : base(callbackInstance, new NetTcpBinding(), new EndpointAddress("net.tcp://localhost:8001/DisplayService"))
+        { }
+
+        public void Connect(string aClientName)
+        {
+            Channel.Connect(aClientName);
+        }
+
+        public void SetText(int aLineIndex, string aText)
+        {
+            Channel.SetText(aLineIndex, aText);
+        }
+
+
+        public void SetTexts(System.Collections.Generic.IList<string> aTexts)
+        {
+            Channel.SetTexts(aTexts);
+        }
+
+
+    }
+
     
     /// <summary>
     /// SoundGraph iMON MiniDisplay implementation.
@@ -28,8 +89,9 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
     /// </summary>
     public class SharpDisplayManager : BaseDisplay
     {
-        ChannelFactory<IDisplayService> iChannelFactory;
-        IDisplayService iClient;
+        ClientOutput iClientOutput;
+        ClientInput iClientInput;
+        InstanceContext iInstanceContext;
 
         public SharpDisplayManager()
         {
@@ -124,12 +186,11 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
         //From IDisplay
         public override void Initialize()
         {
-            iChannelFactory = new ChannelFactory<IDisplayService>(
-                                    new NetNamedPipeBinding(),
-                                    new EndpointAddress(
-                                    "net.pipe://localhost/DisplayService"));
+            iClientInput = new ClientInput();
+            iInstanceContext = new InstanceContext(iClientInput);
+            iClientOutput = new ClientOutput(iInstanceContext);
 
-            iClient = iChannelFactory.CreateChannel();
+            iClientOutput.Connect("MediaPortal");
 
             Initialized = true;
         }
@@ -137,8 +198,9 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
         //From IDisplay
         public override void CleanUp()
         {
-            iClient = null;
-            iChannelFactory = null;
+            iClientOutput = null;
+            iInstanceContext = null;
+            iClientInput = null;
             Initialized = false;
         }
 
@@ -150,7 +212,7 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
             //iDisplay.SetLine(line, message);
 
             //TODO: save it and commit on update
-            iClient.SetText(line,message);
+            iClientOutput.SetText(line, message);
         }
 
         //From IDisplay
