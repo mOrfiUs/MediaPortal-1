@@ -30,13 +30,20 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
         [OperationContract(IsOneWay = true)]
         void OnConnected();
 
-        [OperationContract]
+        [OperationContract(IsOneWay = true)]
         void OnServerClosing();
     }
 
 
     public partial class ClientInput : IDisplayServiceCallback
     {
+        SharpDisplayManager iDisplay;
+
+        public ClientInput(SharpDisplayManager aDisplay)
+        {
+            iDisplay = aDisplay;
+        }
+
         public void OnConnected()
         {
             //Debug.Assert(Thread.CurrentThread.IsThreadPoolThread);
@@ -48,6 +55,7 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
 
         public void OnServerClosing()
         {
+            iDisplay.CleanUp();
             //Debug.Assert(Thread.CurrentThread.IsThreadPoolThread);
             //Trace.WriteLine("Callback thread = " + Thread.CurrentThread.ManagedThreadId);
 
@@ -186,7 +194,7 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
         //From IDisplay
         public override void Initialize()
         {
-            iClientInput = new ClientInput();
+            iClientInput = new ClientInput(this);
             iInstanceContext = new InstanceContext(iClientInput);
             iClientOutput = new ClientOutput(iInstanceContext);
 
@@ -198,8 +206,10 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
         //From IDisplay
         public override void CleanUp()
         {
-            iClientOutput = null;
+            //iInstanceContext.Close();
             iInstanceContext = null;
+            iClientOutput.Close();
+            iClientOutput = null;            
             iClientInput = null;
             Initialized = false;
         }
