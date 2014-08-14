@@ -9,13 +9,16 @@ using System.ServiceModel;
 
 
 
-namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
+namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManager
 {
     [ServiceContract(CallbackContract = typeof(IDisplayServiceCallback))]
     public interface IDisplayService
     {
         [OperationContract(IsOneWay = true)]
         void Connect(string aClientName);
+
+        [OperationContract(IsOneWay = true)]
+        void Disconnect(string aClientName);
 
         [OperationContract(IsOneWay = true)]
         void SetText(int aLineIndex, string aText);
@@ -35,11 +38,12 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
     }
 
 
-    public partial class ClientInput : IDisplayServiceCallback
-    {
-        SharpDisplayManager iDisplay;
 
-        public ClientInput(SharpDisplayManager aDisplay)
+    public class Callback : IDisplayServiceCallback, IDisposable
+    {
+        Display iDisplay;
+
+        public Callback(Display aDisplay)
         {
             iDisplay = aDisplay;
         }
@@ -55,25 +59,44 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
 
         public void OnServerClosing()
         {
-            iDisplay.CleanUp();
+            iDisplay.CloseConnection();
             //Debug.Assert(Thread.CurrentThread.IsThreadPoolThread);
             //Trace.WriteLine("Callback thread = " + Thread.CurrentThread.ManagedThreadId);
 
             //MessageBox.Show("OnServerClosing()", "Client");
         }
+
+        //From IDisposable
+        public void Dispose()
+        {
+
+        }
     }
 
 
 
-    public partial class ClientOutput : DuplexClientBase<IDisplayService>, IDisplayService
+
+    /// <summary>
+    ///
+    /// </summary>
+    public class Client : DuplexClientBase<IDisplayService>
     {
-        public ClientOutput(InstanceContext callbackInstance)
+        private string Name { get; set; }
+
+        public Client(InstanceContext callbackInstance)
             : base(callbackInstance, new NetTcpBinding(), new EndpointAddress("net.tcp://localhost:8001/DisplayService"))
         { }
 
         public void Connect(string aClientName)
         {
+            Name = aClientName;
             Channel.Connect(aClientName);
+        }
+
+        public void Disconnect()
+        {
+            Channel.Disconnect(Name);
+            Name = "";
         }
 
         public void SetText(int aLineIndex, string aText)
@@ -87,21 +110,18 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
             Channel.SetTexts(aTexts);
         }
 
-
     }
 
-    
     /// <summary>
     /// SoundGraph iMON MiniDisplay implementation.
     /// Provides access to iMON Display API.
     /// </summary>
-    public class SharpDisplayManager : BaseDisplay
+    public class Display : BaseDisplay
     {
-        ClientOutput iClientOutput;
-        ClientInput iClientInput;
-        InstanceContext iInstanceContext;
+        Client iClient;
+        Callback iCallback;
 
-        public SharpDisplayManager()
+        public Display()
         {
             Initialized = false;
         }
@@ -128,15 +148,14 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
         //
         private void CheckDisplay()
         {
-            /*
-            if (iDisplay == null)
+            if (iClient == null || iClient.State==CommunicationState.Faulted)
             {
                 //Attempt to recover
                 //LogDebug("SoundGraphDisplay.CheckDisplay(): Trying to recover");
                 CleanUp();
                 Initialize();
             }
-             */
+
         }
 
         //From IDisplay
@@ -194,35 +213,69 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
         //From IDisplay
         public override void Initialize()
         {
-            iClientInput = new ClientInput(this);
-            iInstanceContext = new InstanceContext(iClientInput);
-            iClientOutput = new ClientOutput(iInstanceContext);
+            try
+            {
+                iCallback = new Callback(this);
+                InstanceContext instanceContext = new InstanceContext(iCallback);
+                iClient = new Client(instanceContext);
+                iClient.Connect("MediaPortal");
+                Initialized = true;
+            }
+            catch (System.Exception ex)
+            {
+                Log.Error(
+                "SharpDisplayManager.Display.Initialize(): CAUGHT EXCEPTION {0}\n\n{1}\n\n", ex.Message,
+                new object[] { ex.StackTrace });
 
-            iClientOutput.Connect("MediaPortal");
+                //Rollback
+                iClient = null;
+                iCallback = null;
+                Initialized = false;
+            }
 
-            Initialized = true;
+
+
         }
 
         //From IDisplay
         public override void CleanUp()
         {
-            //iInstanceContext.Close();
-            iInstanceContext = null;
-            iClientOutput.Close();
-            iClientOutput = null;            
-            iClientInput = null;
-            Initialized = false;
+            if (iClient != null)
+            {
+                try
+                {
+                    iClient.SetTexts(new string[] { "Bye Bye!", "See you next time!" });
+                    iClient.Disconnect();
+                    iClient.Close();
+                }
+                catch (System.Exception ex)
+                {
+                    Log.Error(
+                    "SharpDisplayManager.Display.CleanUp(): CAUGHT EXCEPTION {0}\n\n{1}\n\n", ex.Message,
+                    new object[] { ex.StackTrace });
+                }
+
+                iClient = null;
+                iCallback = null;
+                Initialized = false;
+            }
         }
 
         //From IDisplay
         public override void SetLine(int line, string message)
         {
             CheckDisplay();
+
+            if (!Initialized)
+            {
+                return;
+            }
+
             //Pass on that call to our actual display
             //iDisplay.SetLine(line, message);
 
             //TODO: save it and commit on update
-            iClientOutput.SetText(line, message);
+            iClient.SetText(line, message);
         }
 
         //From IDisplay
@@ -257,7 +310,26 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers
             // iMON VFD/LCD cannot be setup
         }
 
+        public void CloseConnection()
+        {
+            if (iClient != null)
+            {
+                try
+                {
+                    iClient.Close();
+                }
+                catch (System.Exception ex)
+                {
+                    Log.Error(
+                    "SharpDisplayManager.Display.CloseConnection(): CAUGHT EXCEPTION {0}\n\n{1}\n\n", ex.Message,
+                    new object[] { ex.StackTrace });
+                }
 
+                iClient = null;
+                iCallback = null;
+                Initialized = false;
+            }
+        }
 
     }
 }
