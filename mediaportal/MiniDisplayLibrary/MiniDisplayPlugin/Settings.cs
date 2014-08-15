@@ -327,7 +327,7 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin
 
       //New sound graph display
       LogInfo("MiniDisplay.Settings.LoadDrivers(): Loading Sharp Display Manager...");
-      list.Add(new SharpDisplayManager());
+      list.Add(new Drivers.SharpDisplayManager.Display());
 
 
       //Add Debug Form

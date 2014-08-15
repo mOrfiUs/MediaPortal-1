@@ -11,20 +11,46 @@ using System.ServiceModel;
 
 namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManager
 {
-    [ServiceContract(CallbackContract = typeof(IDisplayServiceCallback))]
+
+    [ServiceContract(CallbackContract = typeof(IDisplayServiceCallback),
+                        SessionMode = SessionMode.Required)]
     public interface IDisplayService
     {
+        /// <summary>
+        /// Set the name of this client.
+        /// Name is a convenient way to recognize your client.
+        /// Naming you client is not mandatory.
+        /// In the absence of a name the session ID is often used instead.
+        /// </summary>
+        /// <param name="aClientName"></param>
         [OperationContract(IsOneWay = true)]
-        void Connect(string aClientName);
+        void SetName(string aClientName);
 
+        /// <summary>
+        /// Put the given text in the given field on your display.
+        /// Fields are often just lines of text.
+        /// </summary>
+        /// <param name="aFieldIndex"></param>
+        /// <param name="aText"></param>
         [OperationContract(IsOneWay = true)]
-        void Disconnect(string aClientName);
+        void SetText(int aFieldIndex, string aText);
 
-        [OperationContract(IsOneWay = true)]
-        void SetText(int aLineIndex, string aText);
-
+        /// <summary>
+        /// Allows a client to set multiple text fields at once.
+        /// First text in the list is set into field index 0.
+        /// Last text in the list is set into field index N-1.
+        /// </summary>
+        /// <param name="aTexts"></param>
         [OperationContract(IsOneWay = true)]
         void SetTexts(System.Collections.Generic.IList<string> aTexts);
+
+        /// <summary>
+        /// Provides the number of clients currently connected
+        /// </summary>
+        /// <returns></returns>
+        [OperationContract()]
+        int ClientCount();
+
     }
 
 
@@ -33,8 +59,12 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
         [OperationContract(IsOneWay = true)]
         void OnConnected();
 
+        /// <summary>
+        /// Tell our client to close its connection.
+        /// Notably sent when the server is shutting down.
+        /// </summary>
         [OperationContract(IsOneWay = true)]
-        void OnServerClosing();
+        void OnCloseOrder();
     }
 
 
@@ -57,7 +87,7 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
         }
 
 
-        public void OnServerClosing()
+        public void OnCloseOrder()
         {
             iDisplay.CloseConnection();
             //Debug.Assert(Thread.CurrentThread.IsThreadPoolThread);
@@ -79,24 +109,20 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
     /// <summary>
     ///
     /// </summary>
+    [ServiceBehavior(ConcurrencyMode = ConcurrencyMode.Multiple)]
     public class Client : DuplexClientBase<IDisplayService>
     {
-        private string Name { get; set; }
+        public string Name { get; set; }
+        public string SessionId { get { return InnerChannel.SessionId; } }
 
         public Client(InstanceContext callbackInstance)
-            : base(callbackInstance, new NetTcpBinding(), new EndpointAddress("net.tcp://localhost:8001/DisplayService"))
+            : base(callbackInstance, new NetTcpBinding(SecurityMode.None, true), new EndpointAddress("net.tcp://localhost:8001/DisplayService"))
         { }
 
-        public void Connect(string aClientName)
+        public void SetName(string aClientName)
         {
             Name = aClientName;
-            Channel.Connect(aClientName);
-        }
-
-        public void Disconnect()
-        {
-            Channel.Disconnect(Name);
-            Name = "";
+            Channel.SetName(aClientName);
         }
 
         public void SetText(int aLineIndex, string aText)
@@ -104,12 +130,15 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
             Channel.SetText(aLineIndex, aText);
         }
 
-
         public void SetTexts(System.Collections.Generic.IList<string> aTexts)
         {
             Channel.SetTexts(aTexts);
         }
 
+        public int ClientCount()
+        {
+            return Channel.ClientCount();
+        }
     }
 
     /// <summary>
@@ -218,7 +247,7 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
                 iCallback = new Callback(this);
                 InstanceContext instanceContext = new InstanceContext(iCallback);
                 iClient = new Client(instanceContext);
-                iClient.Connect("MediaPortal");
+                iClient.SetName("MediaPortal");
                 Initialized = true;
             }
             catch (System.Exception ex)
@@ -245,7 +274,6 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
                 try
                 {
                     iClient.SetTexts(new string[] { "Bye Bye!", "See you next time!" });
-                    iClient.Disconnect();
                     iClient.Close();
                 }
                 catch (System.Exception ex)
