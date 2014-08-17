@@ -149,6 +149,8 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
     {
         Client iClient;
         Callback iCallback;
+        string iTextTop;
+        string iTextBottom;
 
         public Display()
         {
@@ -302,8 +304,19 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
             //Pass on that call to our actual display
             //iDisplay.SetLine(line, message);
 
-            //TODO: save it and commit on update
-            iClient.SetText(line, message);
+            //TODO: save it and commit on update            
+            //TODO: set a change flag and send stuff to driver on update
+            if (line==0 && iTextTop!=message)
+            {
+                iTextTop = message;
+                iClient.SetText(line, message);
+            }
+            else if (line == 1 && iTextBottom != message)
+            {
+                iTextBottom = message;
+                iClient.SetText(line, message);
+            }
+
         }
 
         //From IDisplay

@@ -177,6 +177,11 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin
       return (Bitmap)this.emptyBitmap.Clone();
     }
 
+    /// <summary>
+    /// Process a line of text, applying alignment and scrolling as needed according to our display features.
+    /// </summary>
+    /// <param name="_line">The line index. O is the top line, 1 the bottom one.</param>
+    /// <returns></returns>
     protected string Process(int _line)
     {
       if (Settings.Instance.ExtensiveLogging)
@@ -188,12 +193,14 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin
       string str;
       if (this.heightInChars == 1)
       {
+        //SL: I believe this is the feature that combines both lines on a single one if our display only supports one line.
         line = this.lines[0];
         line2 = this.lines[1];
         str = line2.Process() + " - " + line.Process();
       }
       else
       {
+        //Our display supports more than one line. Well, it could be zero though...
         line = this.lines[_line];
         str = line.Process();
       }
@@ -226,6 +233,16 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin
       }
       if (str.Length <= this.widthInChars)
       {
+        //Our line is short enough that we don't need to scroll.
+        //That means we will need to apply alignment.
+        if (Settings.Instance.AutoScroll)
+        {
+            //Display driver is going to take care of scrolling.
+            //No need for alignment and padding then.
+            return str;
+        }
+
+
         if (Settings.Instance.ExtensiveLogging)
         {
           Log.Info("MiniDisplayPlugin.DisplayHandler.Process(): final processing result: \"{0}\"", new object[] {str});
@@ -240,8 +257,20 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin
           case Alignment.Right:
             return string.Format("{0," + this.widthInChars + "}", str);
         }
+
+        //Alignment is applied, we are done here since the rest of this function handling scrolling
         return string.Format("{0,-" + this.widthInChars + "}", str);
       }
+
+      //Handle text scrolling
+      if (Settings.Instance.AutoScroll)
+      {
+          //Display driver is going to take care of scrolling.
+          //Just pass in the whole line of text.
+          return str;
+      }
+
+
       if (this.pos[_line] > ((str.Length + this.charsToScroll) + 1))
       {
         this.pos[_line] = 0;
