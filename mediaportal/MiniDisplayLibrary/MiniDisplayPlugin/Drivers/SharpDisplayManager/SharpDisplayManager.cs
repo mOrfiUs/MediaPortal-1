@@ -6,11 +6,41 @@ using System.Text;
 using MediaPortal.GUI.Library;
 using System.Windows.Forms;
 using System.ServiceModel;
+using System.Runtime.Serialization;
+using SharpDisplayInterface;
 
-
-
-namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManager
+namespace SharpDisplayInterface
 {
+    //That contract need to be in the same namespace than the original assembly
+    //otherwise our parameter won't make to the server.
+    //See: http://stackoverflow.com/questions/14956377/passing-an-object-using-datacontract-in-wcf/25455292#25455292
+    [DataContract]
+    public class TextField
+    {
+        public TextField()
+        {
+            Index = 0;
+            Text = "";
+            Alignment = ContentAlignment.MiddleLeft;
+        }
+
+        public TextField(int aIndex, string aText = "", ContentAlignment aAlignment = ContentAlignment.MiddleLeft)
+        {
+            Index = aIndex;
+            Text = aText;
+            Alignment = aAlignment;
+        }
+
+        [DataMember]
+        public int Index { get; set; }
+
+        [DataMember]
+        public string Text { get; set; }
+
+        [DataMember]
+        public ContentAlignment Alignment { get; set; }
+    }
+
 
     [ServiceContract(CallbackContract = typeof(IDisplayServiceCallback),
                         SessionMode = SessionMode.Required)]
@@ -30,19 +60,16 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
         /// Put the given text in the given field on your display.
         /// Fields are often just lines of text.
         /// </summary>
-        /// <param name="aFieldIndex"></param>
-        /// <param name="aText"></param>
+        /// <param name="aTextFieldIndex"></param>
         [OperationContract(IsOneWay = true)]
-        void SetText(int aFieldIndex, string aText);
+        void SetText(TextField aTextField);
 
         /// <summary>
         /// Allows a client to set multiple text fields at once.
-        /// First text in the list is set into field index 0.
-        /// Last text in the list is set into field index N-1.
         /// </summary>
         /// <param name="aTexts"></param>
         [OperationContract(IsOneWay = true)]
-        void SetTexts(System.Collections.Generic.IList<string> aTexts);
+        void SetTexts(System.Collections.Generic.IList<TextField> aTextFields);
 
         /// <summary>
         /// Provides the number of clients currently connected
@@ -66,7 +93,46 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
         [OperationContract(IsOneWay = true)]
         void OnCloseOrder();
     }
+}
 
+
+namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManager
+{
+
+    /// <summary>
+    ///
+    /// </summary>
+    [ServiceBehavior(ConcurrencyMode = ConcurrencyMode.Multiple)]
+    public class Client : DuplexClientBase<IDisplayService>
+    {
+        public string Name { get; set; }
+        public string SessionId { get { return InnerChannel.SessionId; } }
+
+        public Client(InstanceContext callbackInstance)
+            : base(callbackInstance, new NetTcpBinding(SecurityMode.None, true), new EndpointAddress("net.tcp://localhost:8001/DisplayService"))
+        { }
+
+        public void SetName(string aClientName)
+        {
+            Name = aClientName;
+            Channel.SetName(aClientName);
+        }
+
+        public void SetText(TextField aTextField)
+        {
+            Channel.SetText(aTextField);
+        }
+
+        public void SetTexts(System.Collections.Generic.IList<TextField> aTextFields)
+        {
+            Channel.SetTexts(aTextFields);
+        }
+
+        public int ClientCount()
+        {
+            return Channel.ClientCount();
+        }
+    }
 
 
     public class Callback : IDisplayServiceCallback, IDisposable
@@ -104,43 +170,6 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
     }
 
 
-
-
-    /// <summary>
-    ///
-    /// </summary>
-    [ServiceBehavior(ConcurrencyMode = ConcurrencyMode.Multiple)]
-    public class Client : DuplexClientBase<IDisplayService>
-    {
-        public string Name { get; set; }
-        public string SessionId { get { return InnerChannel.SessionId; } }
-
-        public Client(InstanceContext callbackInstance)
-            : base(callbackInstance, new NetTcpBinding(SecurityMode.None, true), new EndpointAddress("net.tcp://localhost:8001/DisplayService"))
-        { }
-
-        public void SetName(string aClientName)
-        {
-            Name = aClientName;
-            Channel.SetName(aClientName);
-        }
-
-        public void SetText(int aLineIndex, string aText)
-        {
-            Channel.SetText(aLineIndex, aText);
-        }
-
-        public void SetTexts(System.Collections.Generic.IList<string> aTexts)
-        {
-            Channel.SetTexts(aTexts);
-        }
-
-        public int ClientCount()
-        {
-            return Channel.ClientCount();
-        }
-    }
-
     /// <summary>
     /// SoundGraph iMON MiniDisplay implementation.
     /// Provides access to iMON Display API.
@@ -149,12 +178,18 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
     {
         Client iClient;
         Callback iCallback;
-        string iTextTop;
-        string iTextBottom;
+        TextField iTextFieldTop;
+        TextField iTextFieldBottom;
+        TextField[] iTextFields;
 
         public Display()
         {
             Initialized = false;
+
+            iTextFieldTop = new TextField(0);
+            iTextFieldBottom = new TextField(1);
+            iTextFields = new TextField[] { iTextFieldTop , iTextFieldBottom };
+
         }
 
 
@@ -275,7 +310,9 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
             {
                 try
                 {
-                    iClient.SetTexts(new string[] { "Bye Bye!", "See you next time!" });
+                    iTextFieldTop.Text="Bye Bye!";
+                    iTextFieldBottom.Text="See you next time!";
+                    iClient.SetTexts(iTextFields);
                     iClient.Close();
                 }
                 catch (System.Exception ex)
@@ -306,15 +343,15 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
 
             //TODO: save it and commit on update            
             //TODO: set a change flag and send stuff to driver on update
-            if (line==0 && iTextTop!=message)
+            if (line==0 && iTextFieldTop.Text!=message)
             {
-                iTextTop = message;
-                iClient.SetText(line, message);
+                iTextFieldTop.Text = message;
+                iClient.SetText(iTextFieldTop);
             }
-            else if (line == 1 && iTextBottom != message)
+            else if (line == 1 && iTextFieldBottom.Text != message)
             {
-                iTextBottom = message;
-                iClient.SetText(line, message);
+                iTextFieldBottom.Text = message;
+                iClient.SetText(iTextFieldBottom);
             }
 
         }
