@@ -413,11 +413,26 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin
       }
     }
 
+    private static ContentAlignment AlignmentToContentAlignment(Alignment aAlignment)
+    {
+        switch (aAlignment)
+        {
+            case Alignment.Left:
+                return ContentAlignment.MiddleLeft;
+            case Alignment.Centered:
+                return ContentAlignment.MiddleCenter;
+            case Alignment.Right:
+                return ContentAlignment.MiddleRight;
+            default:
+                return ContentAlignment.MiddleLeft;
+        }
+    }
+
     private void SendText()
     {
       for (int i = 0; i < this.heightInChars; i++)
       {
-        this.display.SetLine(i, this.Process(i));
+          this.display.SetLine(i, this.Process(i), AlignmentToContentAlignment(this.lines[i].Alignment));
       }
     }
 

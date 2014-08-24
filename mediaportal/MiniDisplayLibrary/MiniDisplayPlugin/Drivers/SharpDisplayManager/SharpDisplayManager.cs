@@ -95,6 +95,7 @@ namespace SharpDisplayInterface
     }
 }
 
+//////////////////////////////////////////////////////////////////////////
 
 namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManager
 {
@@ -329,7 +330,7 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
         }
 
         //From IDisplay
-        public override void SetLine(int line, string message)
+        public override void SetLine(int line, string message, ContentAlignment aAlignment)
         {
             CheckDisplay();
 
@@ -346,11 +347,13 @@ namespace MediaPortal.ProcessPlugins.MiniDisplayPlugin.Drivers.SharpDisplayManag
             if (line==0 && iTextFieldTop.Text!=message)
             {
                 iTextFieldTop.Text = message;
+                iTextFieldTop.Alignment = aAlignment;
                 iClient.SetText(iTextFieldTop);
             }
             else if (line == 1 && iTextFieldBottom.Text != message)
             {
                 iTextFieldBottom.Text = message;
+                iTextFieldBottom.Alignment = aAlignment;
                 iClient.SetText(iTextFieldBottom);
             }
 
