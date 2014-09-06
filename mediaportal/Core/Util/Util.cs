@@ -2706,17 +2706,7 @@ namespace MediaPortal.Util
             }
             catch (System.Net.WebException eWebException)
             {
-                string s = string.Empty;
-                if (eWebException.Response != null)
-                    using (Stream st = eWebException.Response.GetResponseStream())
-                        using (StreamReader sr = new StreamReader(st))
-                            s += sr.ReadToEnd();
-                else
-                    s += eWebException.Message;
-                if ((!string.IsNullOrEmpty(s)) && (secondTry))
-                    s += " second Try Fail";
-                if (!string.IsNullOrEmpty(s))
-                    Log.Info("Utils: DownLoadImage {1} failed:{0}", s, strURL);
+                Log.Info("Utils: DownLoadImage {1} failed: {0}", eWebException.Message + (secondTry ? " second try also fail" : string.Empty), strURL);
                 //after second fail, return
                 if (secondTry)
                     return;
